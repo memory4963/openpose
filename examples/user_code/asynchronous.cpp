@@ -208,15 +208,15 @@ struct UserDatum : public op::Datum
 class UserInputClass
 {
 public:
-    UserInputClass(const std::string& directoryPath) :
-        mImageFiles{op::getFilesOnDirectory(directoryPath, "jpg")},
+	UserInputClass(const std::string& directoryPath) :
+		mImageFiles{cv::VideoCapture(directoryPath)},
         // If we want "jpg" + "png" images
         // mImageFiles{op::getFilesOnDirectory(directoryPath, std::vector<std::string>{"jpg", "png"})},
         mCounter{0},
         mClosed{false}
     {
-        if (mImageFiles.empty())
-            op::error("No images found on: " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
+        if (!mImageFiles.isOpened())
+            op::error("video not opened " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
     }
 
     std::shared_ptr<std::vector<UserDatum>> createDatum()
@@ -259,7 +259,7 @@ public:
     }
 
 private:
-    const std::vector<std::string> mImageFiles;
+    const cv::VideoCapture mImageFiles;
     unsigned long long mCounter;
     bool mClosed;
 };
