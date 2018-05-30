@@ -187,63 +187,51 @@ DEFINE_string(write_keypoint_format,    "yml",          "(Deprecated, use `write
 DEFINE_string(write_keypoint_json,      "",             "(Deprecated, use `write_json`) Directory to write people pose data in JSON format,"
                                                         " compatible with any OpenCV version.");
 
+//struct UserDatum : public op::Datum
+//{
+//    bool boolThatUserNeedsForSomeReason;
+//
+//    UserDatum(const bool boolThatUserNeedsForSomeReason_ = false) :
+//        boolThatUserNeedsForSomeReason{boolThatUserNeedsForSomeReason_}
+//    {}
+//};
 
-// If the user needs his own variables, he can inherit the op::Datum struct and add them
-// UserDatum can be directly used by the OpenPose wrapper because it inherits from op::Datum, just define Wrapper<UserDatum> instead of
-// Wrapper<op::Datum>
-struct UserDatum : public op::Datum
-{
-    bool boolThatUserNeedsForSomeReason;
-
-    UserDatum(const bool boolThatUserNeedsForSomeReason_ = false) :
-        boolThatUserNeedsForSomeReason{boolThatUserNeedsForSomeReason_}
-    {}
-};
-
-// The W-classes can be implemented either as a template or as simple classes given
-// that the user usually knows which kind of data he will move between the queues,
-// in this case we assume a std::shared_ptr of a std::vector of UserDatum
-
-// This worker will just read and return all the jpg files in a directory
 class UserInputClass
 {
 public:
 	UserInputClass(const std::string& directoryPath) :
-		mImageFiles{cv::VideoCapture(directoryPath)},
-        // If we want "jpg" + "png" images
-        // mImageFiles{op::getFilesOnDirectory(directoryPath, std::vector<std::string>{"jpg", "png"})},
-        mCounter{0},
+		mImageFiles{cv::VideoCapture(0)},
         mClosed{false}
     {
         if (!mImageFiles.isOpened())
-            op::error("video not opened " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
+			//op::error("video not opened " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
+			op::error("device not opened ", __LINE__, __FUNCTION__, __FILE__);
     }
 
-    std::shared_ptr<std::vector<UserDatum>> createDatum()
+    std::shared_ptr<std::vector<op::Datum>> createDatum()
     {
-        // Close program when empty frame
-        if (mClosed || mImageFiles.size() <= mCounter)
-        {
-            op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
-            // This funtion stops this worker, which will eventually stop the whole thread system once all the frames
-            // have been processed
-            mClosed = true;
-            return nullptr;
+		if (mClosed || mImageFiles.grab())
+		{
+			op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
+			// This funtion stops this worker, which will eventually stop the whole thread system once all the frames
+			// have been processed
+			mClosed = true;
+			return nullptr;
         }
-        else // if (!mClosed)
+		else // if (!mClosed)
         {
             // Create new datum
-            auto datumsPtr = std::make_shared<std::vector<UserDatum>>();
+            auto datumsPtr = std::make_shared<std::vector<op::Datum>>();
             datumsPtr->emplace_back();
             auto& datum = datumsPtr->at(0);
 
             // Fill datum
-            datum.cvInputData = cv::imread(mImageFiles.at(mCounter++));
+			mImageFiles.retrieve(datum.cvInputData);
 
             // If empty frame -> return nullptr
             if (datum.cvInputData.empty())
             {
-                op::log("Empty frame detected on path: " + mImageFiles.at(mCounter-1) + ". Closing program.",
+                op::log("Empty frame detected, Closing program.",
                         op::Priority::High);
                 mClosed = true;
                 datumsPtr = nullptr;
@@ -259,8 +247,7 @@ public:
     }
 
 private:
-    const cv::VideoCapture mImageFiles;
-    unsigned long long mCounter;
+    cv::VideoCapture mImageFiles;
     bool mClosed;
 };
 
@@ -268,7 +255,7 @@ private:
 class UserOutputClass
 {
 public:
-    bool display(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
+    bool display(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
     {
         // User's displaying/saving/other processing here
             // datum.cvOutputData: rendered frame with pose or heatmaps
@@ -284,7 +271,7 @@ public:
             op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
         return (key == 27);
     }
-    void printKeypoints(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
+    void printKeypoints(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
     {
         // Example: How to use the pose keypoints
         if (datumsPtr != nullptr && !datumsPtr->empty())
@@ -380,7 +367,7 @@ int openPoseTutorialWrapper3()
         op::log("", op::Priority::Low, __LINE__, __FUNCTION__, __FILE__);
 
         // Configure OpenPose
-        op::Wrapper<std::vector<UserDatum>> opWrapper{op::ThreadManagerMode::Asynchronous};
+        op::Wrapper<std::vector<op::Datum>> opWrapper{op::ThreadManagerMode::Asynchronous};
         // Pose configuration (use WrapperStructPose{} for default and recommended configuration)
         const op::WrapperStructPose wrapperStructPose{!FLAGS_body_disable, netInputSize, outputSize, keypointScale,
                                                       FLAGS_num_gpu, FLAGS_num_gpu_start, FLAGS_scale_number,
@@ -435,7 +422,7 @@ int openPoseTutorialWrapper3()
             {
                 auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
                 // Pop frame
-                std::shared_ptr<std::vector<UserDatum>> datumProcessed;
+                std::shared_ptr<std::vector<op::Datum>> datumProcessed;
                 if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
                 {
                     userWantsToExit = userOutputClass.display(datumProcessed);
