@@ -3,7 +3,7 @@
 #add_subdirectory(tutorial_add_module)
 #add_subdirectory(tutorial_pose)
 #add_subdirectory(tutorial_thread)
-add_subdirectory(tutorial_wrapper)
+#add_subdirectory(tutorial_wrapper)
 add_subdirectory(user_code)
 if (UNIX AND NOT APPLE)
   add_subdirectory(tests)

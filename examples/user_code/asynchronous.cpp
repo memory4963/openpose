@@ -200,9 +200,10 @@ class UserInputClass
 {
 public:
 	UserInputClass(const std::string& directoryPath) :
-		mImageFiles{cv::VideoCapture(0)},
+		mImageFiles{cv::VideoCapture(directoryPath)},
         mClosed{false}
     {
+		mImageFiles = cv::VideoCapture(directoryPath);
         if (!mImageFiles.isOpened())
 			//op::error("video not opened " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
 			op::error("device not opened ", __LINE__, __FUNCTION__, __FILE__);
@@ -210,7 +211,7 @@ public:
 
     std::shared_ptr<std::vector<op::Datum>> createDatum()
     {
-		if (mClosed || mImageFiles.grab())
+		if (mClosed || !mImageFiles.grab())
 		{
 			op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
 			// This funtion stops this worker, which will eventually stop the whole thread system once all the frames
@@ -300,9 +301,9 @@ public:
             const auto& poseHeatMaps = datumsPtr->at(0).poseHeatMaps;
             if (!poseHeatMaps.empty())
             {
-                op::log("Pose heatmaps size: [" + std::to_string(poseHeatMaps.getSize(0)) + ", "
+                std::cout << "Pose heatmaps size: [" + std::to_string(poseHeatMaps.getSize(0)) + ", "
                         + std::to_string(poseHeatMaps.getSize(1)) + ", "
-                        + std::to_string(poseHeatMaps.getSize(2)) + "]");
+                        + std::to_string(poseHeatMaps.getSize(2)) + "]";
                 const auto& faceHeatMaps = datumsPtr->at(0).faceHeatMaps;
                 op::log("Face heatmaps size: [" + std::to_string(faceHeatMaps.getSize(0)) + ", "
                         + std::to_string(faceHeatMaps.getSize(1)) + ", "
@@ -411,7 +412,8 @@ int openPoseTutorialWrapper3()
         opWrapper.start();
 
         // User processing
-        UserInputClass userInputClass(FLAGS_image_dir);
+		//UserInputClass userInputClass(FLAGS_image_dir);
+		UserInputClass userInputClass("E:\\!paper\\openpose\\build\\20160815_150638.mp4");
         UserOutputClass userOutputClass;
         bool userWantsToExit = false;
         while (!userWantsToExit && !userInputClass.isFinished())
@@ -461,5 +463,7 @@ int main(int argc, char *argv[])
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
     // Running openPoseTutorialWrapper3
-    return openPoseTutorialWrapper3();
+	openPoseTutorialWrapper3();
+	system("pause");
+    return 0;
 }
