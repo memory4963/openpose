@@ -413,7 +413,7 @@ int openPoseTutorialWrapper3()
 
         // User processing
 		//UserInputClass userInputClass(FLAGS_image_dir);
-		UserInputClass userInputClass("E:\\!paper\\openpose\\build\\20160815_150638.mp4");
+		UserInputClass userInputClass("/home/luoao/openpose/dataset/RGBvideo/a1_d8_p40_c2_color.avi");
         UserOutputClass userOutputClass;
         bool userWantsToExit = false;
         while (!userWantsToExit && !userInputClass.isFinished())
@@ -427,7 +427,7 @@ int openPoseTutorialWrapper3()
                 std::shared_ptr<std::vector<op::Datum>> datumProcessed;
                 if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
                 {
-                    userWantsToExit = userOutputClass.display(datumProcessed);
+                    //userWantsToExit = userOutputClass.display(datumProcessed);
                     userOutputClass.printKeypoints(datumProcessed);
                 }
                 else
