@@ -175,7 +175,6 @@ DEFINE_string(write_video,              "",             "Full file path to write
                                                         " final path does not finish in `.avi`. It internally uses cv::VideoWriter.");
 DEFINE_string(write_json,               "",             "Directory to write OpenPose output in JSON format. It includes body, hand, and face pose"
                                                         " keypoints (2-D and 3-D), as well as pose candidates (if `--part_candidates` enabled).");
-DEFINE_string(write_data,               "",             "Directory to write user customed output in JSON format.");
 DEFINE_string(write_coco_json,          "",             "Full file path to write people pose data with JSON COCO validation format.");
 DEFINE_string(write_heatmaps,           "",             "Directory to write body pose heatmaps in PNG format. At least 1 `add_heatmaps_X` flag"
                                                         " must be enabled.");
@@ -188,6 +187,9 @@ DEFINE_string(write_keypoint_format,    "yml",          "(Deprecated, use `write
                                                         " yaml & yml. Json not available for OpenCV < 3.0, use `write_keypoint_json` instead.");
 DEFINE_string(write_keypoint_json,      "",             "(Deprecated, use `write_json`) Directory to write people pose data in JSON format,"
                                                         " compatible with any OpenCV version.");
+DEFINE_string(write_data,               "",             "Directory to write user customed output in JSON format.");
+DEFINE_int32(start_file,                 0,             "The file number where the program start to process,"
+                                                        "Used for breakpoint continuation");
 
 //struct UserDatum : public op::Datum
 //{
@@ -223,8 +225,12 @@ public:
 		//int fileNameLen = str.find_last_of('.') - str.find_last_of('\\') - 1;
 		//fileName = str.substr(str.find_last_of('\\') + 1, fileNameLen);
 		int fileNameLen = str.find_last_of('.') - str.find_last_of('/') - 1;
+		std::string tempName = fileName;
 		fileName = str.substr(str.find_last_of('/') + 1, fileNameLen);
 		fileCnt++;
+
+		op::log("file '" + tempName + "' completed, " + "processing file '" + fileName + "'. " + "(" + std::to_string(fileCnt) + "/" + std::to_string(fileNum) + ")", op::Priority::High);
+
 		mClosed = false;
 		return true;
 	}
@@ -233,7 +239,7 @@ public:
     {
 		if (mClosed || !video.grab())
 		{
-			op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
+			op::log("Last frame read and added to queue.", op::Priority::High);
 			// This funtion stops this worker, which will eventually stop the whole thread system once all the frames
 			// have been processed
 			mClosed = true;
@@ -277,7 +283,7 @@ private:
 	cv::VideoCapture video;
 	std::string fileName;
 	int fileNum;
-	int fileCnt = 0;
+	int fileCnt = FLAGS_start_file;
     bool mClosed;
 };
 
@@ -490,7 +496,7 @@ int openPoseTutorialWrapper3()
 		{
 			if (!FLAGS_write_data.empty())
 			{
-				std::ofstream file(FLAGS_write_data + userInputClass.getFileName() + ".json");
+				std::ofstream file(FLAGS_write_data + "/" + userInputClass.getFileName() + ".json");
 				if (!file.is_open())
 				{
 					op::log("open output file failed");
@@ -578,6 +584,7 @@ int main(int argc, char *argv[])
 
     // Running openPoseTutorialWrapper3
 	openPoseTutorialWrapper3();
-	system("pause");
+	//WIN32
+	//system("pause");
     return 0;
 }
