@@ -27,6 +27,7 @@
 #endif
 // OpenPose dependencies
 #include <openpose/headers.hpp>
+#include <fstream>
 
 // See all the available parameter options withe the `--help` flag. E.g. `build/examples/openpose/openpose.bin --help`
 // Note: This command will show you flags for other unnecessary 3rdparty files. Check only the flags for the OpenPose
@@ -174,6 +175,7 @@ DEFINE_string(write_video,              "",             "Full file path to write
                                                         " final path does not finish in `.avi`. It internally uses cv::VideoWriter.");
 DEFINE_string(write_json,               "",             "Directory to write OpenPose output in JSON format. It includes body, hand, and face pose"
                                                         " keypoints (2-D and 3-D), as well as pose candidates (if `--part_candidates` enabled).");
+DEFINE_string(write_data,               "",             "Directory to write user customed output in JSON format.");
 DEFINE_string(write_coco_json,          "",             "Full file path to write people pose data with JSON COCO validation format.");
 DEFINE_string(write_heatmaps,           "",             "Directory to write body pose heatmaps in PNG format. At least 1 `add_heatmaps_X` flag"
                                                         " must be enabled.");
@@ -200,18 +202,36 @@ class UserInputClass
 {
 public:
 	UserInputClass(const std::string& directoryPath) :
-		mImageFiles{cv::VideoCapture(directoryPath)},
+		mImageFiles{ op::getFilesOnDirectory(directoryPath, std::vector<std::string>{"avi", "mp4"}) },
         mClosed{false}
     {
-		mImageFiles = cv::VideoCapture(directoryPath);
-        if (!mImageFiles.isOpened())
+		fileNum = mImageFiles.size();
+        if (mImageFiles.empty())
 			//op::error("video not opened " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
 			op::error("device not opened ", __LINE__, __FUNCTION__, __FILE__);
     }
 
+	bool nextFile()
+	{
+		if (fileCnt >= fileNum)
+		{
+			return false;
+		}
+		std::string str = mImageFiles[fileCnt];
+		video = cv::VideoCapture(str);
+		//WIN32
+		//int fileNameLen = str.find_last_of('.') - str.find_last_of('\\') - 1;
+		//fileName = str.substr(str.find_last_of('\\') + 1, fileNameLen);
+		int fileNameLen = str.find_last_of('.') - str.find_last_of('/') - 1;
+		fileName = str.substr(str.find_last_of('/') + 1, fileNameLen);
+		fileCnt++;
+		mClosed = false;
+		return true;
+	}
+
     std::shared_ptr<std::vector<op::Datum>> createDatum()
     {
-		if (mClosed || !mImageFiles.grab())
+		if (mClosed || !video.grab())
 		{
 			op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
 			// This funtion stops this worker, which will eventually stop the whole thread system once all the frames
@@ -227,7 +247,7 @@ public:
             auto& datum = datumsPtr->at(0);
 
             // Fill datum
-			mImageFiles.retrieve(datum.cvInputData);
+			video.retrieve(datum.cvInputData);
 
             // If empty frame -> return nullptr
             if (datum.cvInputData.empty())
@@ -247,8 +267,17 @@ public:
         return mClosed;
     }
 
+	std::string getFileName()
+	{
+		return fileName;
+	}
+
 private:
-    cv::VideoCapture mImageFiles;
+    std::vector<std::string> mImageFiles;
+	cv::VideoCapture video;
+	std::string fileName;
+	int fileNum;
+	int fileCnt = 0;
     bool mClosed;
 };
 
@@ -323,6 +352,41 @@ public:
         else
             op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
     }
+	std::string saveKeypoints(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
+	{
+		// Example: How to use the pose keypoints
+		if (datumsPtr != nullptr && !datumsPtr->empty())
+		{
+			std::string output;
+			const auto& poseKeypoints = datumsPtr->at(0).poseKeypoints;
+			output += "{\"persons\":[";
+			for (auto person = 0; person < poseKeypoints.getSize(0); person++)
+			{
+				output += "{\"pose\":[";
+				//pose
+				for (auto bodyPart = 0; bodyPart < poseKeypoints.getSize(1); bodyPart++)
+				{
+					//std::string valueToPrint;
+					for (auto xyscore = 0; xyscore < poseKeypoints.getSize(2); xyscore++)
+						output += std::to_string(poseKeypoints[{person, bodyPart, xyscore}]) + ",";
+				}
+				output += "],";
+				//left hand
+				//right hand
+
+				output += "},";
+			}
+			output += "]},";
+			return output;
+		}
+		else
+		{
+			op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__,
+				__FILE__);
+			return "";
+		}
+
+	}
 };
 
 int openPoseTutorialWrapper3()
@@ -411,30 +475,80 @@ int openPoseTutorialWrapper3()
         op::log("Starting thread(s)...", op::Priority::High);
         opWrapper.start();
 
+
+		//WIN32
+		//UserInputClass userInputClass("E:\\!paper\\openpose\\build");
+		//FLAGS_write_data = "E:\\!paper\\openpose\\build\\";
+
+
+
         // User processing
-		//UserInputClass userInputClass(FLAGS_image_dir);
-		UserInputClass userInputClass("E:\\!paper\\openpose\\build\\20160815_150638.mp4");
+		UserInputClass userInputClass(FLAGS_image_dir);
+
         UserOutputClass userOutputClass;
-        bool userWantsToExit = false;
-        while (!userWantsToExit && !userInputClass.isFinished())
-        {
-            // Push frame
-            auto datumToProcess = userInputClass.createDatum();
-            if (datumToProcess != nullptr)
-            {
-                auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
-                // Pop frame
-                std::shared_ptr<std::vector<op::Datum>> datumProcessed;
-                if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
-                {
-                    userWantsToExit = userOutputClass.display(datumProcessed);
-                    userOutputClass.printKeypoints(datumProcessed);
-                }
-                else
-                    op::log("Processed datum could not be emplaced.", op::Priority::High,
-                            __LINE__, __FUNCTION__, __FILE__);
-            }
-        }
+		while (userInputClass.nextFile())
+		{
+			if (!FLAGS_write_data.empty())
+			{
+				std::ofstream file(FLAGS_write_data + userInputClass.getFileName() + ".json");
+				if (!file.is_open())
+				{
+					op::log("open output file failed");
+					file.close();
+					continue;
+				}
+				file << "{\"video_name\":\"" + userInputClass.getFileName() + "\", \"frames\":[";
+				while (!userInputClass.isFinished())
+				{
+					// Push frame
+					auto datumToProcess = userInputClass.createDatum();
+					if (datumToProcess != nullptr)
+					{
+						auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
+						// Pop frame
+						std::shared_ptr<std::vector<op::Datum>> datumProcessed;
+						if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
+						{
+
+							//userOutputClass.printKeypoints(datumProcessed);
+							file << userOutputClass.saveKeypoints(datumProcessed);
+						}
+						else
+							op::log("Processed datum could not be emplaced.", op::Priority::High,
+								__LINE__, __FUNCTION__, __FILE__);
+					}
+				}
+				file << "]}";
+				file.close();
+			}
+			else
+			{
+				op::log("output dir is empty", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
+				bool userWantsToExit = false;
+				while (!userWantsToExit && !userInputClass.isFinished())
+				{
+					// Push frame
+					auto datumToProcess = userInputClass.createDatum();
+					if (datumToProcess != nullptr)
+					{
+						auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
+						// Pop frame
+						std::shared_ptr<std::vector<op::Datum>> datumProcessed;
+						if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
+						{
+							//userWantsToExit = userOutputClass.display(datumProcessed);
+							userOutputClass.printKeypoints(datumProcessed);
+						}
+						else
+							op::log("Processed datum could not be emplaced.", op::Priority::High,
+								__LINE__, __FUNCTION__, __FILE__);
+					}
+				}
+			}
+			
+		
+		}
+        
 
         op::log("Stopping thread(s)", op::Priority::High);
         opWrapper.stop();
