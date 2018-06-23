@@ -190,6 +190,9 @@ DEFINE_string(write_keypoint_json,      "",             "(Deprecated, use `write
 DEFINE_string(write_data,               "",             "Directory to write user customed output in JSON format.");
 DEFINE_int32(start_file,                 0,             "The file number where the program start to process,"
                                                         "Used for breakpoint continuation");
+DEFINE_bool(simple_version,            false,           "Output simple type. Every frame only output one person, "
+                                                        "each person have 18 points, as x1 y1 x2 y2 ..., 36 num " 
+	                                                    "in total.");
 
 //struct UserDatum : public op::Datum
 //{
@@ -291,6 +294,7 @@ private:
 class UserOutputClass
 {
 public:
+
     bool display(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
     {
         // User's displaying/saving/other processing here
@@ -307,6 +311,7 @@ public:
             op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
         return (key == 27);
     }
+
     void printKeypoints(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
     {
         // Example: How to use the pose keypoints
@@ -358,6 +363,7 @@ public:
         else
             op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
     }
+
 	std::string saveKeypoints(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
 	{
 		// Example: How to use the pose keypoints
@@ -391,7 +397,32 @@ public:
 				__FILE__);
 			return "";
 		}
+	}
 
+	std::string saveSimpleKeypoints(const std::shared_ptr<std::vector<op::Datum>>& datumsPtr)
+	{
+		// Example: How to use the pose keypoints
+		if (datumsPtr != nullptr && !datumsPtr->empty())
+		{
+			std::string output;
+			const auto& poseKeypoints = datumsPtr->at(0).poseKeypoints;
+			int person = 0;
+			//pose
+			for (auto bodyPart = 0; bodyPart < poseKeypoints.getSize(1); bodyPart++)
+			{
+				//std::string valueToPrint;
+				for (auto xy = 0; xy < poseKeypoints.getSize(2) - 1; xy++)
+					output += std::to_string(poseKeypoints[{person, bodyPart, xy}]) + " ";
+			}
+			output += "\n";
+			return output;
+		}
+		else
+		{
+			op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__,
+				__FILE__);
+			return "";
+		}
 	}
 };
 
@@ -440,6 +471,12 @@ int openPoseTutorialWrapper3()
         // Configure OpenPose
         op::Wrapper<std::vector<op::Datum>> opWrapper{op::ThreadManagerMode::Asynchronous};
         // Pose configuration (use WrapperStructPose{} for default and recommended configuration)
+
+		if (FLAGS_simple_version)
+		{
+			FLAGS_number_people_max = 1;
+		}
+
         const op::WrapperStructPose wrapperStructPose{!FLAGS_body_disable, netInputSize, outputSize, keypointScale,
                                                       FLAGS_num_gpu, FLAGS_num_gpu_start, FLAGS_scale_number,
                                                       (float)FLAGS_scale_gap,
@@ -496,36 +533,70 @@ int openPoseTutorialWrapper3()
 		{
 			if (!FLAGS_write_data.empty())
 			{
-				std::ofstream file(FLAGS_write_data + "/" + userInputClass.getFileName() + ".json");
-				if (!file.is_open())
+				if (FLAGS_simple_version)
 				{
-					op::log("open output file failed");
-					file.close();
-					continue;
-				}
-				file << "{\"video_name\":\"" + userInputClass.getFileName() + "\", \"frames\":[";
-				while (!userInputClass.isFinished())
-				{
-					// Push frame
-					auto datumToProcess = userInputClass.createDatum();
-					if (datumToProcess != nullptr)
+					std::ofstream file(FLAGS_write_data + "/" + userInputClass.getFileName() + ".data");
+					if (!file.is_open())
 					{
-						auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
-						// Pop frame
-						std::shared_ptr<std::vector<op::Datum>> datumProcessed;
-						if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
-						{
-
-							//userOutputClass.printKeypoints(datumProcessed);
-							file << userOutputClass.saveKeypoints(datumProcessed);
-						}
-						else
-							op::log("Processed datum could not be emplaced.", op::Priority::High,
-								__LINE__, __FUNCTION__, __FILE__);
+						op::log("open output file failed");
+						file.close();
+						continue;
 					}
+					while (!userInputClass.isFinished())
+					{
+						// Push frame
+						auto datumToProcess = userInputClass.createDatum();
+						if (datumToProcess != nullptr)
+						{
+							auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
+							// Pop frame
+							std::shared_ptr<std::vector<op::Datum>> datumProcessed;
+							if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
+							{
+
+								//userOutputClass.printKeypoints(datumProcessed);
+								file << userOutputClass.saveSimpleKeypoints(datumProcessed);
+							}
+							else
+								op::log("Processed datum could not be emplaced.", op::Priority::High,
+									__LINE__, __FUNCTION__, __FILE__);
+						}
+					}
+					file.close();
 				}
-				file << "]}";
-				file.close();
+				else
+				{
+					std::ofstream file(FLAGS_write_data + "/" + userInputClass.getFileName() + ".json");
+					if (!file.is_open())
+					{
+						op::log("open output file failed");
+						file.close();
+						continue;
+					}
+					file << "{\"video_name\":\"" + userInputClass.getFileName() + "\", \"frames\":[";
+					while (!userInputClass.isFinished())
+					{
+						// Push frame
+						auto datumToProcess = userInputClass.createDatum();
+						if (datumToProcess != nullptr)
+						{
+							auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
+							// Pop frame
+							std::shared_ptr<std::vector<op::Datum>> datumProcessed;
+							if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
+							{
+
+								//userOutputClass.printKeypoints(datumProcessed);
+								file << userOutputClass.saveKeypoints(datumProcessed);
+							}
+							else
+								op::log("Processed datum could not be emplaced.", op::Priority::High,
+									__LINE__, __FUNCTION__, __FILE__);
+						}
+					}
+					file << "]}";
+					file.close();
+				}
 			}
 			else
 			{
