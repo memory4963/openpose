@@ -193,6 +193,7 @@ DEFINE_int32(start_file,                 0,             "The file number where t
 DEFINE_bool(simple_version,            false,           "Output simple type. Every frame only output one person, "
                                                         "each person have 18 points, as x1 y1 x2 y2 ..., 36 num " 
 	                                                    "in total.");
+DEFINE_string(data_types,                "",            "The types of used data, splited by ',', eg. a1,a2,a3");
 
 //struct UserDatum : public op::Datum
 //{
@@ -206,6 +207,7 @@ DEFINE_bool(simple_version,            false,           "Output simple type. Eve
 class UserInputClass
 {
 public:
+
 	UserInputClass(const std::string& directoryPath) :
 		mImageFiles{ op::getFilesOnDirectory(directoryPath, std::vector<std::string>{"avi", "mp4"}) },
         mClosed{false}
@@ -214,7 +216,27 @@ public:
         if (mImageFiles.empty())
 			//op::error("video not opened " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
 			op::error("device not opened ", __LINE__, __FUNCTION__, __FILE__);
+		if (!FLAGS_data_types.empty())
+		{
+			split(FLAGS_data_types, types, ",");
+		}
     }
+
+	void split(const std::string& s, std::vector<std::string>& v, const std::string& c)
+	{
+		std::string::size_type pos1, pos2;
+		pos2 = s.find(c);
+		pos1 = 0;
+		while (std::string::npos != pos2)
+		{
+			v.push_back(s.substr(pos1, pos2 - pos1));
+
+			pos1 = pos2 + c.size();
+			pos2 = s.find(c, pos1);
+		}
+		if (pos1 != s.length())
+			v.push_back(s.substr(pos1));
+	}
 
 	bool nextFile()
 	{
@@ -222,20 +244,58 @@ public:
 		{
 			return false;
 		}
-		std::string str = mImageFiles[fileCnt];
-		video = cv::VideoCapture(str);
-		//WIN32
-		//int fileNameLen = str.find_last_of('.') - str.find_last_of('\\') - 1;
-		//fileName = str.substr(str.find_last_of('\\') + 1, fileNameLen);
-		int fileNameLen = str.find_last_of('.') - str.find_last_of('/') - 1;
-		std::string tempName = fileName;
-		fileName = str.substr(str.find_last_of('/') + 1, fileNameLen);
-		fileCnt++;
 
-		op::log("file '" + tempName + "' completed, " + "processing file '" + fileName + "'. " + "(" + std::to_string(fileCnt) + "/" + std::to_string(fileNum) + ")", op::Priority::High);
+		if (types.size() > 0)
+		{
+			bool inTypes = false;
+			std::string tempName = fileName;
 
-		mClosed = false;
-		return true;
+			do
+			{
+				std::string str = mImageFiles[fileCnt];
+				int fileNameLen = str.find_last_of('.') - str.find_last_of('/') - 1;
+				std::string tempName = fileName;
+				fileName = str.substr(str.find_last_of('/') + 1, fileNameLen);
+				fileCnt++;
+
+				for (size_t i = 0; i < types.size(); i++)
+				{
+					if (fileName.find(types.at(i)) != fileName.npos)
+					{
+						inTypes = true;
+						break;
+					}
+				}
+			} while (!inTypes && fileCnt < fileNum);
+
+			if (fileCnt >= fileNum)
+			{
+				return false;
+			}
+
+			op::log("file '" + tempName + "' completed, " + "processing file '" + fileName + "'. " + "(" + std::to_string(fileCnt) + "/" + std::to_string(fileNum) + ")", op::Priority::High);
+
+			mClosed = false;
+			return true;
+		}
+		else
+		{
+			std::string str = mImageFiles[fileCnt];
+			video = cv::VideoCapture(str);
+			//WIN32
+			//int fileNameLen = str.find_last_of('.') - str.find_last_of('\\') - 1;
+			//fileName = str.substr(str.find_last_of('\\') + 1, fileNameLen);
+			int fileNameLen = str.find_last_of('.') - str.find_last_of('/') - 1;
+			std::string tempName = fileName;
+			fileName = str.substr(str.find_last_of('/') + 1, fileNameLen);
+			
+			fileCnt++;
+
+			op::log("file '" + tempName + "' completed, " + "processing file '" + fileName + "'. " + "(" + std::to_string(fileCnt) + "/" + std::to_string(fileNum) + ")", op::Priority::High);
+
+			mClosed = false;
+			return true;
+		}
 	}
 
     std::shared_ptr<std::vector<op::Datum>> createDatum()
@@ -288,6 +348,7 @@ private:
 	int fileNum;
 	int fileCnt = FLAGS_start_file;
     bool mClosed;
+	std::vector<std::string> types;
 };
 
 // This worker will just read and return all the jpg files in a directory
