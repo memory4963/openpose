@@ -475,6 +475,7 @@ int openPoseTutorialWrapper3()
 		if (FLAGS_simple_version)
 		{
 			FLAGS_number_people_max = 1;
+			op::log("Outputing simple version.");
 		}
 
         const op::WrapperStructPose wrapperStructPose{!FLAGS_body_disable, netInputSize, outputSize, keypointScale,
