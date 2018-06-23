@@ -263,6 +263,7 @@ public:
 					if (fileName.find(types.at(i)) != fileName.npos)
 					{
 						inTypes = true;
+						video = cv::VideoCapture(str);
 						break;
 					}
 				}
